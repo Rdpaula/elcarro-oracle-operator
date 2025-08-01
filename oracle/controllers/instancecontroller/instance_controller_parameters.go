@@ -185,7 +185,8 @@ func (r *InstanceReconciler) parameterUpdateStateMachine(ctx context.Context, re
 	}
 
 	// If the last failed parameter update is equal to the requested state skip it.
-	if eq := reflect.DeepEqual(inst.Spec.Parameters, inst.Status.LastFailedParameterUpdate); eq {
+	if eq := inst.Status.LastFailedParameterUpdate != nil && reflect.DeepEqual(inst.Spec.InstanceSpec, inst.Status.LastFailedParameterUpdate); eq {
+		log.Info("parameterUpdateStateMachine: Update skipped since the last failed parameter is equal to the requested state and the Spec has not changed.")
 		return ctrl.Result{}, nil
 	}
 
@@ -237,8 +238,9 @@ func (r *InstanceReconciler) parameterUpdateStateMachine(ctx context.Context, re
 	case k8s.ParameterUpdateComplete:
 		inst.Status.CurrentParameters = inst.Spec.Parameters
 		msg := "parameterUpdateStateMachine: Parameter update successful"
-		r.recordEventAndUpdateStatus(ctx, &inst, v1.ConditionTrue, k8s.CreateComplete, msg, log)
 		inst.Status.CurrentActiveStateMachine = ""
+		inst.Status.LastFailedParameterUpdate = nil
+		r.recordEventAndUpdateStatus(ctx, &inst, v1.ConditionTrue, k8s.CreateComplete, msg, log)
 		log.Info("parameterUpdateStateMachine: SM ParameterUpdateComplete -> CreateComplete")
 		return ctrl.Result{}, nil
 
@@ -247,10 +249,10 @@ func (r *InstanceReconciler) parameterUpdateStateMachine(ctx context.Context, re
 			log.Info("parameterUpdateStateMachine: recovery failed, instance currently in irrecoverable state", "err", err)
 			return ctrl.Result{}, err
 		}
-		inst.Status.LastFailedParameterUpdate = inst.Spec.Parameters
+		inst.Status.LastFailedParameterUpdate = &(inst.DeepCopy().Spec.InstanceSpec)
+		inst.Status.CurrentActiveStateMachine = ""
 		msg := "parameterUpdateStateMachine: instance recovered after bad parameter update"
 		r.recordEventAndUpdateStatus(ctx, &inst, v1.ConditionTrue, k8s.CreateComplete, msg, log)
-		inst.Status.CurrentActiveStateMachine = ""
 		log.Info("parameterUpdateStateMachine: SM ParameterUpdateRollbackInProgress -> CreateComplete")
 		return ctrl.Result{}, nil
 	}
