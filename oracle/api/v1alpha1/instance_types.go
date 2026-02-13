@@ -282,7 +282,12 @@ type InstanceStatus struct {
 
 	// LastFailedParameterUpdate is used to avoid getting into the failed
 	// parameter update loop.
-	LastFailedParameterUpdate *commonv1alpha1.InstanceSpec `json:"lastFailedParameterUpdate,omitempty"`
+	LastFailedParameterUpdate map[string]string `json:"lastFailedParameterUpdate,omitempty"`
+
+	// LastFailedParameterUpdateGeneration stores the metadata.generation at
+	// which the parameter update failed. Combined with LastFailedParameterUpdate,
+	// this allows retrying if the spec changes (generation increments).
+	LastFailedParameterUpdateGeneration int64 `json:"lastFailedParameterUpdateGeneration,omitempty"`
 
 	// ActiveImages stores the stable images used by the active containers.
 	ActiveImages map[string]string `json:"ActiveImages,omitempty"`

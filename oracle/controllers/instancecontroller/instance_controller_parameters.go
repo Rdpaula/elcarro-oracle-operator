@@ -184,8 +184,10 @@ func (r *InstanceReconciler) parameterUpdateStateMachine(ctx context.Context, re
 		return ctrl.Result{}, nil
 	}
 
-	// If the last failed parameter update is equal to the requested state skip it.
-	if eq := inst.Status.LastFailedParameterUpdate != nil && reflect.DeepEqual(inst.Spec.InstanceSpec, inst.Status.LastFailedParameterUpdate); eq {
+	// If the last failed parameter update is equal to the requested state
+	// and the spec hasn't changed since (same generation), skip the retry.
+	if reflect.DeepEqual(inst.Spec.Parameters, inst.Status.LastFailedParameterUpdate) &&
+		inst.Status.LastFailedParameterUpdateGeneration == inst.Generation {
 		log.Info("parameterUpdateStateMachine: Update skipped since the last failed parameter is equal to the requested state and the Spec has not changed.")
 		return ctrl.Result{}, nil
 	}
@@ -240,6 +242,7 @@ func (r *InstanceReconciler) parameterUpdateStateMachine(ctx context.Context, re
 		msg := "parameterUpdateStateMachine: Parameter update successful"
 		inst.Status.CurrentActiveStateMachine = ""
 		inst.Status.LastFailedParameterUpdate = nil
+		inst.Status.LastFailedParameterUpdateGeneration = 0
 		r.recordEventAndUpdateStatus(ctx, &inst, v1.ConditionTrue, k8s.CreateComplete, msg, log)
 		log.Info("parameterUpdateStateMachine: SM ParameterUpdateComplete -> CreateComplete")
 		return ctrl.Result{}, nil
@@ -249,7 +252,8 @@ func (r *InstanceReconciler) parameterUpdateStateMachine(ctx context.Context, re
 			log.Info("parameterUpdateStateMachine: recovery failed, instance currently in irrecoverable state", "err", err)
 			return ctrl.Result{}, err
 		}
-		inst.Status.LastFailedParameterUpdate = &(inst.DeepCopy().Spec.InstanceSpec)
+		inst.Status.LastFailedParameterUpdate = inst.Spec.Parameters
+		inst.Status.LastFailedParameterUpdateGeneration = inst.Generation
 		inst.Status.CurrentActiveStateMachine = ""
 		msg := "parameterUpdateStateMachine: instance recovered after bad parameter update"
 		r.recordEventAndUpdateStatus(ctx, &inst, v1.ConditionTrue, k8s.CreateComplete, msg, log)
