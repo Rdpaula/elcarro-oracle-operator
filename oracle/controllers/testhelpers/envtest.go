@@ -571,6 +571,7 @@ func deployOperator(ctx context.Context, k8sClient client.Client, CPNamespace, D
 	dbInitImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, dbInitImage, agentImageTag)
 	loggingSidecarImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, loggingSidecarImage, agentImageTag)
 	monitoringAgentImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, monitoringAgentImage, agentImageTag)
+
 	operatorImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, operatorImage, agentImageTag)
 	// Global modified for usage in pitr test.
 	PitrAgentImage = fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, PitrAgentImage, agentImageTag)
@@ -888,7 +889,7 @@ func TestImageForVersion(version string, edition string, extra string) string {
 	case "FREE":
 		{
 			switch version {
-			case "23c":
+			case "23ai":
 				{
 					switch extra {
 					default:
@@ -903,10 +904,10 @@ func TestImageForVersion(version string, edition string, extra string) string {
 			case "19.3":
 				{
 					switch extra {
-					case "unseeded-32545013":
-						return os.Getenv("TEST_IMAGE_ORACLE_19_3_EE_UNSEEDED_32545013")
+					case "unseeded-37960098":
+						return os.Getenv("TEST_IMAGE_ORACLE_19_3_EE_UNSEEDED_37960098")
 					case "unseeded":
-						return os.Getenv("TEST_IMAGE_ORACLE_19_3_EE_UNSEEDED_32545013")
+						return os.Getenv("TEST_IMAGE_ORACLE_19_3_EE_UNSEEDED_37960098")
 					case "seeded-buggy":
 						return os.Getenv("TEST_IMAGE_ORACLE_19_3_EE_SEEDED_BUGGY")
 					case "ocr":
@@ -930,6 +931,15 @@ func CreateSimpleInstance(k8sEnv K8sOperatorEnvironment, instanceName string, ve
 	if edition == "FREE" {
 		cdbName = "FREE"
 	}
+
+	var agentImageTag, agentImageRepo, agentImageProject string
+	agentImageTag = os.Getenv("PROW_IMAGE_TAG")
+	agentImageRepo = os.Getenv("PROW_IMAGE_REPO")
+	agentImageProject = os.Getenv("PROW_PROJECT")
+
+	dbInitImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, dbInitImage, agentImageTag)
+	loggingSidecarImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, loggingSidecarImage, agentImageTag)
+	monitoringAgentImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, monitoringAgentImage, agentImageTag)
 
 	instance := &v1alpha1.Instance{
 		ObjectMeta: metav1.ObjectMeta{
@@ -956,7 +966,10 @@ func CreateSimpleInstance(k8sEnv K8sOperatorEnvironment, instanceName string, ve
 					},
 				},
 				Images: map[string]string{
-					"service": TestImageForVersion(version, edition, ""),
+					"service":         TestImageForVersion(version, edition, ""),
+					"dbinit":          dbInitImage,
+					"logging_sidecar": loggingSidecarImage,
+					"monitoring":      monitoringAgentImage,
 				},
 				DBLoadBalancerOptions: &commonv1alpha1.DBLoadBalancerOptions{
 					GCP: commonv1alpha1.DBLoadBalancerOptionsGCP{LoadBalancerType: "Internal"},

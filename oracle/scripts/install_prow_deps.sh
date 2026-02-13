@@ -21,17 +21,6 @@
 set -x #echo on
 set -e
 
-# Setup bazel caching
-# DO NOT use this cache from your local machine.
-CC_HASH=$(sha256sum $(which ${CC:-gcc}) | cut -c1-8)
-PY_HASH=$(sha256sum $(which python) | cut -c1-8)
-CACHE_KEY="CC:${CC_HASH:-err},PY:${PY_HASH:-err}"
-
-cat << EOF >> .bazelrc
-build --remote_cache=https://storage.googleapis.com/graybox-bazel-cache/${CACHE_KEY}
-build --google_default_credentials
-EOF
-
 INSTALL_TMP_DIR=$(mktemp -d)
 cd $INSTALL_TMP_DIR
 
@@ -41,13 +30,20 @@ curl -fsSL https://storage.googleapis.com/www.bazel.build/bazel-release.pub.gpg 
 mv bazel.gpg /etc/apt/trusted.gpg.d/
 echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | tee /etc/apt/sources.list.d/bazel.list
 
+# remove the out of date helm repository, update it with the new buildkite one
+# see https://helm.sh/docs/intro/install/#from-apt-debianubuntu
+# TODO:vitorguidi remove this once the base ods kubekins image is rebuilt against a more recent base kubekins one
+test -f /etc/apt/sources.list.d/helm-stable-debian.list && rm /etc/apt/sources.list.d/helm-stable-debian.list
+curl -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey | gpg --dearmor | tee /usr/share/keyrings/helm.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main" | tee /etc/apt/sources.list.d/helm-stable-debian.list
+
 # everything we can get from debian packages.
 apt-get update -qq
 apt-get install -y \
   clang-format gettext-base jq
 
 # Install bazelisk.
-export BAZELISK_VERSION=v1.18.0
+export BAZELISK_VERSION=v1.26.0
 wget -q https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-linux-amd64 -O /usr/local/bin/bazel
 which bazel
 
@@ -60,7 +56,7 @@ ln -s /google-cloud-sdk /usr/lib/google-cloud-sdk
 # ln -s /google-cloud-sdk/bin/kubectl.1.18 /usr/local/bin/kubectl
 
 gcloud auth configure-docker --quiet
-
+bazel --version
 # cleanup
 cd /
 rm -rf /var/lib/apt/lists/*

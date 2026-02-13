@@ -17,6 +17,7 @@ package instancetest
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -41,6 +42,17 @@ import (
 	"github.com/GoogleCloudPlatform/elcarro-oracle-operator/oracle/controllers/instancecontroller"
 	"github.com/GoogleCloudPlatform/elcarro-oracle-operator/oracle/controllers/testhelpers"
 	"github.com/GoogleCloudPlatform/elcarro-oracle-operator/oracle/pkg/k8s"
+)
+
+var (
+	agentImageTag     = os.Getenv("PROW_IMAGE_TAG")
+	agentImageRepo    = os.Getenv("PROW_IMAGE_REPO")
+	agentImageProject = os.Getenv("PROW_PROJECT")
+	// Base image names, to be combined with PROW_IMAGE_{TAG,REPO}.
+	dbInitImage          = "oracle.db.anthosapis.com/dbinit"
+	loggingSidecarImage  = "oracle.db.anthosapis.com/loggingsidecar"
+	monitoringAgentImage = "oracle.db.anthosapis.com/monitoring"
+	// Used by pitr test directly.
 )
 
 // Made global to be accessible by AfterSuite
@@ -264,7 +276,7 @@ var _ = Describe("Instance and Database provisioning", func() {
 				func(obj *client.Object) {
 					instanceToUpdate := (*obj).(*v1alpha1.Instance)
 					instanceToUpdate.Spec.DatabaseResources.Requests["memory"] = resource.MustParse("9Gi")
-					instanceToUpdate.Spec.DatabaseResources.Requests["cpu"] = resource.MustParse("3m")
+					instanceToUpdate.Spec.DatabaseResources.Requests["cpu"] = resource.MustParse("3")
 				})
 			stsPod = &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
@@ -276,7 +288,7 @@ var _ = Describe("Instance and Database provisioning", func() {
 				testhelpers.K8sGetWithRetry(k8sEnv.K8sClient, ctx, client.ObjectKeyFromObject(stsPod), stsPod)
 				for _, container := range stsPod.Spec.Containers {
 					if container.Name == controllers.DatabaseContainerName {
-						return container.Resources.Requests["memory"] == resource.MustParse("9Gi") && container.Resources.Requests["cpu"] == resource.MustParse("3m")
+						return container.Resources.Requests["memory"] == resource.MustParse("9Gi") && container.Resources.Requests["cpu"] == resource.MustParse("3")
 					}
 				}
 				return false
@@ -321,21 +333,18 @@ var _ = Describe("Instance and Database provisioning", func() {
 		TestInstanceCreationAndDatabaseProvisioning("19.3", "EE", "", true)
 	})
 
-	Context("Oracle 18c XE", func() {
-		TestInstanceCreationAndDatabaseProvisioning("18c", "XE", "", true)
-	})
-
-	Context("Oracle 23c FREE", func() {
-		TestInstanceCreationAndDatabaseProvisioning("23c", "FREE", "", true)
+	Context("Oracle 23ai FREE", func() {
+		TestInstanceCreationAndDatabaseProvisioning("23ai", "FREE", "", true)
 	})
 
 	// Slow tests, only run in Canary
 	if testhelpers.IsCanaryJob() {
 		Context("Oracle 19.3 EE unseeded", func() {
-			TestInstanceCreationAndDatabaseProvisioning("19.3", "EE", "unseeded-32545013", false)
+			TestInstanceCreationAndDatabaseProvisioning("19.3", "EE", "unseeded-37960098", false)
 		})
 
 		// Images from OCR
+
 		Context("Oracle 19.3 EE unseeded from OCR", func() {
 			TestInstanceCreationAndDatabaseProvisioning("19.3", "EE", "ocr", false)
 		})
@@ -347,6 +356,16 @@ func createInstance(instanceName, cdbName, namespace, version, edition, podSpecL
 	if edition == "FREE" {
 		cdbName = "FREE"
 	}
+
+	var agentImageTag, agentImageRepo, agentImageProject string
+	agentImageTag = os.Getenv("PROW_IMAGE_TAG")
+	agentImageRepo = os.Getenv("PROW_IMAGE_REPO")
+	agentImageProject = os.Getenv("PROW_PROJECT")
+
+	dbInitImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, dbInitImage, agentImageTag)
+	loggingSidecarImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, loggingSidecarImage, agentImageTag)
+	monitoringAgentImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, monitoringAgentImage, agentImageTag)
+
 	instance := &v1alpha1.Instance{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instanceName,
@@ -391,11 +410,14 @@ func createInstance(instanceName, cdbName, namespace, version, edition, podSpecL
 				DatabaseResources: corev1.ResourceRequirements{
 					Requests: corev1.ResourceList{
 						corev1.ResourceMemory: resource.MustParse("8Gi"),
-						corev1.ResourceCPU:    resource.MustParse("2m"),
+						corev1.ResourceCPU:    resource.MustParse("2"),
 					},
 				},
 				Images: map[string]string{
-					"service": testhelpers.TestImageForVersion(version, edition, extra),
+					"service":         testhelpers.TestImageForVersion(version, edition, extra),
+					"dbinit":          dbInitImage,
+					"logging_sidecar": loggingSidecarImage,
+					"monitoring":      monitoringAgentImage,
 				},
 				DBLoadBalancerOptions: &commonv1alpha1.DBLoadBalancerOptions{
 					GCP: commonv1alpha1.DBLoadBalancerOptionsGCP{LoadBalancerType: "Internal"},

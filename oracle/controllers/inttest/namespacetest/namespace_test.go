@@ -16,6 +16,8 @@ package namespacetest
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -38,6 +40,17 @@ import (
 	"github.com/GoogleCloudPlatform/elcarro-oracle-operator/oracle/pkg/k8s"
 )
 
+var (
+	agentImageTag     = os.Getenv("PROW_IMAGE_TAG")
+	agentImageRepo    = os.Getenv("PROW_IMAGE_REPO")
+	agentImageProject = os.Getenv("PROW_PROJECT")
+	// Base image names, to be combined with PROW_IMAGE_{TAG,REPO}.
+	dbInitImage          = "oracle.db.anthosapis.com/dbinit"
+	loggingSidecarImage  = "oracle.db.anthosapis.com/loggingsidecar"
+	monitoringAgentImage = "oracle.db.anthosapis.com/monitoring"
+	// Used by pitr test directly.
+)
+
 // Made global to be accessible by AfterSuite
 var k8sEnv = testhelpers.K8sOperatorEnvironment{}
 
@@ -57,7 +70,7 @@ var _ = Describe("Instance and Database provisioning", func() {
 		operatorNamespace = testhelpers.RandName("namespace-test-op")
 		instanceNamespace = testhelpers.RandName("namespace-test-inst")
 		instanceName = "mydb-1"
-		cdbName = "MYDB"
+		cdbName = "FREE" // ORACLE 23ai only allows FREE for CDB name
 
 		k8sEnv.Init(operatorNamespace, instanceNamespace)
 	})
@@ -108,14 +121,14 @@ var _ = Describe("Instance and Database provisioning", func() {
 		TestInstanceCreationAndDatabaseProvisioning("19.3", "EE", "", true)
 	})
 
-	Context("Oracle 18c XE", func() {
-		TestInstanceCreationAndDatabaseProvisioning("18c", "XE", "", true)
+	Context("Oracle 23ai FREE", func() {
+		TestInstanceCreationAndDatabaseProvisioning("23ai", "FREE", "", true)
 	})
 
 	// Slow tests, only run in Canary
 	if testhelpers.IsCanaryJob() {
 		Context("Oracle 19.3 EE unseeded", func() {
-			TestInstanceCreationAndDatabaseProvisioning("19.3", "EE", "32545013-unseeded", false)
+			TestInstanceCreationAndDatabaseProvisioning("19.3", "EE", "unseeded-37960098", false)
 		})
 
 		// Images from OCR
@@ -126,6 +139,11 @@ var _ = Describe("Instance and Database provisioning", func() {
 })
 
 func createInstance(instanceName, cdbName, namespace, version, edition, extra string) {
+
+	dbInitImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, dbInitImage, agentImageTag)
+	loggingSidecarImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, loggingSidecarImage, agentImageTag)
+	monitoringAgentImage := fmt.Sprintf("%s/%s/%s:%s", agentImageRepo, agentImageProject, monitoringAgentImage, agentImageTag)
+
 	instance := &v1alpha1.Instance{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instanceName,
@@ -154,7 +172,10 @@ func createInstance(instanceName, cdbName, namespace, version, edition, extra st
 					},
 				},
 				Images: map[string]string{
-					"service": testhelpers.TestImageForVersion(version, edition, extra),
+					"service":         testhelpers.TestImageForVersion(version, edition, extra),
+					"dbinit":          dbInitImage,
+					"logging_sidecar": loggingSidecarImage,
+					"monitoring":      monitoringAgentImage,
 				},
 				DBLoadBalancerOptions: &commonv1alpha1.DBLoadBalancerOptions{
 					GCP: commonv1alpha1.DBLoadBalancerOptionsGCP{LoadBalancerType: "Internal"},
