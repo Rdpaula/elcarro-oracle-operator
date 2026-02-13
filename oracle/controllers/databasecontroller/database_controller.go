@@ -83,9 +83,9 @@ func findContainer(pod corev1.Pod, c string) (*corev1.Container, error) {
 // updateIsChangeApplied sets status.IsChangeApplied field to false if observedGeneration < generation, it sets it to true if changes are applied.
 func (r *DatabaseReconciler) updateIsChangeApplied(ctx context.Context, db *v1alpha1.Database) {
 	if db.Status.ObservedGeneration < db.Generation {
+		r.Log.Info("change detected", "observedGeneration", db.Status.ObservedGeneration, "generation", db.Generation)
 		db.Status.IsChangeApplied = v1.ConditionFalse
 		db.Status.ObservedGeneration = db.Generation
-		r.Log.Info("change detected", "observedGeneration", db.Status.ObservedGeneration, "generation", db.Generation)
 	}
 	if db.Status.IsChangeApplied == v1.ConditionTrue {
 		return

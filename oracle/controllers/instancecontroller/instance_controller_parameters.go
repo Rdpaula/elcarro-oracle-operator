@@ -184,8 +184,11 @@ func (r *InstanceReconciler) parameterUpdateStateMachine(ctx context.Context, re
 		return ctrl.Result{}, nil
 	}
 
-	// If the last failed parameter update is equal to the requested state skip it.
-	if eq := reflect.DeepEqual(inst.Spec.Parameters, inst.Status.LastFailedParameterUpdate); eq {
+	// If the last failed parameter update is equal to the requested state
+	// and the spec hasn't changed since (same generation), skip the retry.
+	if reflect.DeepEqual(inst.Spec.Parameters, inst.Status.LastFailedParameterUpdate) &&
+		inst.Status.LastFailedParameterUpdateGeneration == inst.Generation {
+		log.Info("parameterUpdateStateMachine: Update skipped since the last failed parameter is equal to the requested state and the Spec has not changed.")
 		return ctrl.Result{}, nil
 	}
 
@@ -237,8 +240,10 @@ func (r *InstanceReconciler) parameterUpdateStateMachine(ctx context.Context, re
 	case k8s.ParameterUpdateComplete:
 		inst.Status.CurrentParameters = inst.Spec.Parameters
 		msg := "parameterUpdateStateMachine: Parameter update successful"
-		r.recordEventAndUpdateStatus(ctx, &inst, v1.ConditionTrue, k8s.CreateComplete, msg, log)
 		inst.Status.CurrentActiveStateMachine = ""
+		inst.Status.LastFailedParameterUpdate = nil
+		inst.Status.LastFailedParameterUpdateGeneration = 0
+		r.recordEventAndUpdateStatus(ctx, &inst, v1.ConditionTrue, k8s.CreateComplete, msg, log)
 		log.Info("parameterUpdateStateMachine: SM ParameterUpdateComplete -> CreateComplete")
 		return ctrl.Result{}, nil
 
@@ -248,9 +253,10 @@ func (r *InstanceReconciler) parameterUpdateStateMachine(ctx context.Context, re
 			return ctrl.Result{}, err
 		}
 		inst.Status.LastFailedParameterUpdate = inst.Spec.Parameters
+		inst.Status.LastFailedParameterUpdateGeneration = inst.Generation
+		inst.Status.CurrentActiveStateMachine = ""
 		msg := "parameterUpdateStateMachine: instance recovered after bad parameter update"
 		r.recordEventAndUpdateStatus(ctx, &inst, v1.ConditionTrue, k8s.CreateComplete, msg, log)
-		inst.Status.CurrentActiveStateMachine = ""
 		log.Info("parameterUpdateStateMachine: SM ParameterUpdateRollbackInProgress -> CreateComplete")
 		return ctrl.Result{}, nil
 	}
